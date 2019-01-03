@@ -7,6 +7,7 @@ import brs.GeneratorImpl.MockGeneratorImpl;
 import brs.assetexchange.AssetExchange;
 import brs.assetexchange.AssetExchangeImpl;
 import brs.blockchainlistener.DevNullListener;
+import brs.deeplink.DeeplinkQRCodeGenerator;
 import brs.feesuggestions.FeeSuggestionCalculator;
 import brs.props.Props;
 import brs.db.BlockDb;
@@ -50,11 +51,15 @@ import brs.util.DownloadCacheImpl;
 import brs.util.LoggerConfigurator;
 import brs.util.ThreadPool;
 import brs.util.Time;
+import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.sql.ResultSet;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,9 +68,7 @@ public final class Burst {
 
   public static final String VERSION     = "2.3.0";
   public static final String APPLICATION = "BRS";
-  public static final String LEGACY_APP  = "NRS";
-  public static final String LEGACY_VER  = "1.2.9";
-  
+
   private static final String DEFAULT_PROPERTIES_NAME = "brs-default.properties";
 
   private static final Logger logger = LoggerFactory.getLogger(Burst.class);
@@ -234,6 +237,8 @@ public final class Burst {
 
       generator.generateForBlockchainProcessor(threadPool, blockchainProcessor);
 
+      final DeeplinkQRCodeGenerator deepLinkQRCodeGenerator = new DeeplinkQRCodeGenerator();
+
       final ParameterService parameterService = new ParameterServiceImpl(accountService, aliasService, assetExchange,
           digitalGoodsStoreService, blockchain, blockchainProcessor, transactionProcessor, atService);
 
@@ -248,7 +253,7 @@ public final class Burst {
       api = new API(transactionProcessor, blockchain, blockchainProcessor, parameterService,
           accountService, aliasService, assetExchange, escrowService, digitalGoodsStoreService,
           subscriptionService, atService, timeService, economicClustering, propertyService, threadPool,
-          transactionService, blockService, generator, apiTransactionManager, feeSuggestionCalculator);
+          transactionService, blockService, generator, apiTransactionManager, feeSuggestionCalculator, deepLinkQRCodeGenerator);
 
       DebugTrace.init(propertyService, blockchainProcessor, accountService, assetExchange, digitalGoodsStoreService);
 
@@ -294,7 +299,7 @@ public final class Burst {
       logger.error(e.getMessage(), e);
       System.exit(1);
     }
-
+    (new Thread(Burst::commandHandler)).start();
   }
 
   private static void addBlockchainListeners(BlockchainProcessor blockchainProcessor, AccountService accountService, DGSGoodsStoreService goodsService, Blockchain blockchain,
@@ -311,17 +316,41 @@ public final class Burst {
     shutdown(false);
   }
 
+  public static void commandHandler() {
+    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+    try {
+      String command;
+      while ( ( command = reader.readLine() ) != null){
+        logger.debug("received command: >" + command + "<");
+        if ( command.equals(".shutdown") ) {
+          shutdown(false);
+          System.exit(0);
+        } else if ( command.startsWith(".popoff ") ) {
+          Pattern r = Pattern.compile("^\\.popoff (\\d+)$");
+          Matcher m = r.matcher(command);
+          if (m.find()) {
+            int numBlocks = Integer.parseInt(m.group(1));
+            if (numBlocks > 0) {
+              blockchainProcessor.popOffTo(blockchain.getHeight() - numBlocks);
+            }
+          }
+        }
+      }
+    } catch ( IOException e ) {
+      // ignore
+    }
+  }
+
   public static void shutdown(boolean ignoreDBShutdown) {
     logger.info("Shutting down...");
     if (api != null)
       api.shutdown();
     Peers.shutdown(threadPool);
     threadPool.shutdown();
-    dbCacheManager.close();
-
     if(! ignoreDBShutdown) {
       Db.shutdown();
     }
+    dbCacheManager.close();
     if (blockchainProcessor != null && blockchainProcessor.getOclVerify()) {
       OCLPoC.destroy();
     }

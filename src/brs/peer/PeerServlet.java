@@ -35,6 +35,25 @@ public final class PeerServlet extends HttpServlet {
     abstract JSONStreamAware processRequest(JSONObject request, Peer peer);
   }
 
+  abstract static class ExtendedPeerRequestHandler extends PeerRequestHandler {
+    JSONStreamAware processRequest(JSONObject request, Peer peer) { return null; }
+    abstract ExtendedProcessRequest extendedProcessRequest(JSONObject request, Peer peer);
+  }
+
+  static class ExtendedProcessRequest {
+    JSONStreamAware response;
+    RequestLifecycleHook afterRequestHook;
+
+    public ExtendedProcessRequest(JSONStreamAware response, RequestLifecycleHook afterRequestHook) {
+      this.response = response;
+      this.afterRequestHook = afterRequestHook;
+    }
+  }
+
+  interface RequestLifecycleHook {
+    void run();
+  }
+
   private final Map<String,PeerRequestHandler> peerRequestHandlers;
 
   public PeerServlet(TimeService timeService, AccountService accountService,
@@ -47,6 +66,7 @@ public final class PeerServlet extends HttpServlet {
     map.put("getInfo", new GetInfo(timeService));
     map.put("getMilestoneBlockIds", new GetMilestoneBlockIds(blockchain));
     map.put("getNextBlockIds", new GetNextBlockIds(blockchain));
+    map.put("getBlocksFromHeight", new GetBlocksFromHeight(blockchain));
     map.put("getNextBlocks", new GetNextBlocks(blockchain));
     map.put("getPeers", GetPeers.instance);
     map.put("getUnconfirmedTransactions", new GetUnconfirmedTransactions(transactionProcessor));
@@ -71,19 +91,21 @@ public final class PeerServlet extends HttpServlet {
     UNSUPPORTED_PROTOCOL = JSON.prepare(response);
   }
 
-  private boolean isGzipEnabled;
-
   @Override
   public void init(ServletConfig config) throws ServletException {
     super.init(config);
-    isGzipEnabled = Boolean.parseBoolean(config.getInitParameter("isGzipEnabled"));
   }
 
   @Override
   protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    if(! Peers.isSupportedUserAgent(req.getHeader("User-Agent"))) {
+      return;
+    }
 
     PeerImpl peer = null;
     JSONStreamAware response;
+
+    ExtendedProcessRequest extendedProcessRequest = null;
 
     String requestType = "unknown";
     try {
@@ -116,7 +138,12 @@ public final class PeerServlet extends HttpServlet {
         requestType = "" + request.get("requestType");
         PeerRequestHandler peerRequestHandler = peerRequestHandlers.get(request.get("requestType"));
         if (peerRequestHandler != null) {
-          response = peerRequestHandler.processRequest(request, peer);
+          if(peerRequestHandler instanceof ExtendedPeerRequestHandler) {
+            extendedProcessRequest = ((ExtendedPeerRequestHandler) peerRequestHandler).extendedProcessRequest(request, peer);
+            response = extendedProcessRequest.response;
+          } else {
+            response = peerRequestHandler.processRequest(request, peer);
+          }
         }
         else {
           response = UNSUPPORTED_REQUEST_TYPE;
@@ -151,6 +178,10 @@ public final class PeerServlet extends HttpServlet {
         peer.blacklist(e, "can't respond to requestType=" + requestType);
       }
       throw e;
+    }
+
+    if(extendedProcessRequest != null) {
+      extendedProcessRequest.afterRequestHook.run();
     }
   }
 

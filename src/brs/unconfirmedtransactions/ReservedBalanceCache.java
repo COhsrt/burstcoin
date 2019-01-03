@@ -2,10 +2,13 @@ package brs.unconfirmedtransactions;
 
 import brs.Account;
 import brs.BurstException;
+import brs.BurstException.ValidationException;
 import brs.Transaction;
 import brs.db.store.AccountStore;
 import brs.util.Convert;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +29,7 @@ class ReservedBalanceCache {
   void reserveBalanceAndPut(Transaction transaction) throws BurstException.ValidationException {
     Account senderAccount = null;
 
-    if(transaction.getSenderId() != 0) {
+    if (transaction.getSenderId() != 0) {
       senderAccount = accountStore.getAccountTable().get(accountStore.getAccountKeyFactory().newKey(transaction.getSenderId()));
     }
 
@@ -36,12 +39,12 @@ class ReservedBalanceCache {
     );
 
     if (senderAccount == null) {
-      LOGGER.debug(String.format("Account %d does not exist and has no balance. Required funds: %d",transaction.getSenderId(), amountNQT));
+      LOGGER.info(String.format("Transaction %d: Account %d does not exist and has no balance. Required funds: %d", transaction.getId(), transaction.getSenderId(), amountNQT));
 
       throw new BurstException.NotCurrentlyValidException("Account unknown");
     } else if ( amountNQT > senderAccount.getUnconfirmedBalanceNQT() ) {
-      LOGGER.debug(String.format("Account %d balance to low. You have  %d > %d Balance",
-          transaction.getSenderId(), amountNQT, senderAccount.getUnconfirmedBalanceNQT()
+      LOGGER.info(String.format("Transaction %d: Account %d balance too low. You have  %d > %d Balance",
+          transaction.getId(), transaction.getSenderId(), amountNQT, senderAccount.getUnconfirmedBalanceNQT()
       ));
 
       throw new BurstException.NotCurrentlyValidException("Insufficient funds");
@@ -63,7 +66,24 @@ class ReservedBalanceCache {
     }
   }
 
+  public List<Transaction> rebuild(List<Transaction> transactions) {
+    clear();
+
+    final List<Transaction> insufficientFundsTransactions = new ArrayList<>();
+
+    for(Transaction t : transactions) {
+      try {
+        this.reserveBalanceAndPut(t);
+      } catch (ValidationException e) {
+        insufficientFundsTransactions.add(t);
+      }
+    }
+
+    return insufficientFundsTransactions;
+  }
+
   public void clear() {
     reservedBalanceCache.clear();
   }
+
 }

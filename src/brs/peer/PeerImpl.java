@@ -1,6 +1,7 @@
 package brs.peer;
 
 import brs.*;
+import brs.crypto.Crypto;
 import brs.props.Props;
 import brs.util.Convert;
 import brs.util.CountingInputStream;
@@ -37,6 +38,7 @@ final class PeerImpl implements Peer {
   private volatile long uploadedVolume;
   private volatile int lastUpdated;
   private volatile Long lastUnconfirmedTransactionTimestamp = null;
+  private volatile byte[] lastDownloadedTransactionsDigest;
 
   PeerImpl(String peerAddress, String announcedAddress) {
     this.peerAddress = peerAddress;
@@ -82,6 +84,15 @@ final class PeerImpl implements Peer {
     return downloadedVolume;
   }
 
+  public boolean diffLastDownloadedTransactions( byte[] data ) {
+    byte[] newDigest = Crypto.sha256().digest(data);
+    if ( lastDownloadedTransactionsDigest != null && Arrays.equals(newDigest, lastDownloadedTransactionsDigest) ) {
+      return false;
+    }
+    lastDownloadedTransactionsDigest = newDigest;
+    return true;
+  }
+
   void updateDownloadedVolume(long volume) {
     synchronized (this) {
       downloadedVolume += volume;
@@ -107,10 +118,18 @@ final class PeerImpl implements Peer {
   }
 
   // semantic versioning for peer versions. here: ">=" negate it for "<"
-  public boolean isHigherOrEqualVersionThan(String ComparisonVersion) {
+  public boolean isHigherOrEqualVersionThan(String ourVersion) {
+    return isHigherOrEqualVersion(ourVersion, version);
+  }
+
+  public static boolean isHigherOrEqualVersion(String ourVersion, String possiblyLowerVersion) {
+    if(possiblyLowerVersion == null || possiblyLowerVersion.isEmpty()) {
+      return false;
+    }
+
     Pattern pattern = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)?");
-    Matcher matchPeer = pattern.matcher(version);
-    Matcher matchCompare = pattern.matcher(ComparisonVersion);
+    Matcher matchPeer = pattern.matcher(possiblyLowerVersion);
+    Matcher matchCompare = pattern.matcher(ourVersion);
 
     if (matchPeer.find() && matchCompare.find()) {  // if both peer version and our comparison version are sane
       // we have simplified versions with 3 limbs: X.Y.Z
@@ -239,6 +258,7 @@ final class PeerImpl implements Peer {
     }
     else {
       boolean alreadyBlacklisted = isBlacklisted();
+      logger.error("Reason for following blacklist: " + cause.getMessage(), cause);
       blacklist(description); // refresh blacklist expiry
       if ( ! alreadyBlacklisted ) {
         logger.debug("... because of: " + cause.toString(), cause);
@@ -284,7 +304,7 @@ final class PeerImpl implements Peer {
   public int getLastUpdated() {
     return lastUpdated;
   }
-
+/*
   @Override
   public Long getLastUnconfirmedTransactionTimestamp() {
     return this.lastUnconfirmedTransactionTimestamp;
@@ -294,6 +314,7 @@ final class PeerImpl implements Peer {
   public void setLastUnconfirmedTransactionTimestamp(Long lastUnconfirmedTransactionTimestamp) {
     this.lastUnconfirmedTransactionTimestamp = lastUnconfirmedTransactionTimestamp;
   }
+*/
 
   void setLastUpdated(int lastUpdated) {
     this.lastUpdated = lastUpdated;
@@ -331,6 +352,7 @@ final class PeerImpl implements Peer {
       connection.setDoOutput(true);
       connection.setConnectTimeout(Peers.connectTimeout);
       connection.setReadTimeout(Peers.readTimeout);
+      connection.addRequestProperty("User-Agent","BRS/" + Burst.VERSION);
       connection.setRequestProperty("Accept-Encoding", "gzip");
       connection.setRequestProperty("Connection", "close");
 

@@ -32,8 +32,7 @@ var BRS = (function(BRS, $, undefined) {
         $("#send_money_amount").val(amount.toFixed(8));
         $("#send_money_fee").val(fee.toFixed(8));
 
-        var total = amount + fee;
-        $(element).closest(".modal").find(".total_amount_ordinary").html(BRS.formatAmount(BRS.convertToNQT(total)) + " BURST");
+        $(element).closest(".modal").find(".total_amount_ordinary").html(BRS.formatAmount(BRS.convertToNQT(amount + fee)) + " BURST");
     };
 
     $("#send_message_modal, #send_money_modal, #add_contact_modal").on("show.bs.modal", function(e) {
@@ -190,7 +189,7 @@ var BRS = (function(BRS, $, undefined) {
                 } else {
                     callback({
                         "type": "warning",
-                        "message": $.t("recipient_no_public_key_pka", {
+                        "message": $.t("recipient_no_public_key", {
                             "burst": BRS.formatAmount(response.unconfirmedBalanceNQT, false, true)
                         }),
                         "account": response,
@@ -345,7 +344,7 @@ var BRS = (function(BRS, $, undefined) {
                             accountInputField.val(match[1].escapeHTML());
                             callout.html($.t("alias_account_link", {
                                 "account_id": String(match[1]).escapeHTML()
-                            }) + ". " + $.t("recipient_unknown_pka") + " " + $.t("alias_last_adjusted", {
+                            }) + ". " + $.t("alias_last_adjusted", {
                                 "timestamp": BRS.formatTimestamp(timestamp)
                             })).removeClass(classes).addClass("callout-" + response.type).show();
                         });

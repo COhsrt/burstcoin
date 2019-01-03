@@ -5,6 +5,14 @@ var BRS = (function(BRS, $, undefined) {
     var _messages = {};
     var _latestMessages = {};
 
+    $('#send_message_modal').on('show.bs.modal', function (e) {
+        BRS.showFeeSuggestions("#send_message_fee", "#suggested_fee_response_send_message");
+    });
+    $("#suggested_fee_send_message").on("click", function(e) {
+        e.preventDefault();
+        BRS.showFeeSuggestions("#send_message_fee", "#suggested_fee_response_send_message");
+    });
+
     BRS.pages.messages = function(callback) {
 	_messages = {};
 
@@ -146,8 +154,14 @@ var BRS = (function(BRS, $, undefined) {
 	}
     }
 
+    $("#suggested_fee_messages_page").on("click", function(e) {
+        e.preventDefault();
+       BRS.showFeeSuggestions("#send_message_fee_page", "#suggested_fee_response_messages_page");
+    });
     $("#messages_sidebar").on("click", "a", function(e) {
 	e.preventDefault();
+    BRS.showFeeSuggestions("#send_message_fee_page", "#suggested_fee_response_messages_page");
+
 
 	$("#messages_sidebar a.active").removeClass("active");
 	$(this).addClass("active");
@@ -350,6 +364,7 @@ var BRS = (function(BRS, $, undefined) {
 
     });
 
+
     $("body").on("click", "a[data-goto-messages-account]", function(e) {
 	e.preventDefault();
 	
@@ -380,7 +395,7 @@ var BRS = (function(BRS, $, undefined) {
 
 	var data = {
 	    "recipient": $.trim($("#inline_message_recipient").val()),
-	    "feeNXT": "1",
+	    "feeNXT": $("#send_message_fee_page").val(),
 	    "deadline": "1440",
 	    "secretPhrase": $.trim($("#inline_message_password").val())
 	};

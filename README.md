@@ -65,11 +65,9 @@ Use it to connect to the newly created mariaDb server and create a new DB called
 
 #### MacOS
 
-Plase use beatsbears' comfortable script <https://github.com/beatsbears/macos_burst/>
-to install and maintain the Burst wallet on your Mac.
-An older howto at ecomineearth
-<https://ecomine.earth/macoswalletinstallguide/> basically describes
-the manual steps the script above does for you.
+BRS can be installed using a [Homebrew](https://brew.sh/) [formula](https://github.com/nixops/homebrew-burstcoind). A short tutorial on how to install BRS using homebrew can be found at [ecomine.earth/macos](https://ecomine.earth/macos/).
+
+A number of other Hombrew formulas (written by [Nixops](https://github.com/nixops)) are also available for plotters and miners.
 
 #### Other Unix-like systems
 
@@ -101,6 +99,77 @@ Now you need to add the following stuff to your `conf/brs.properties`:
 DB.Url=jdbc:mariadb://localhost:3306/brs_master
 DB.Username=brs_user
 DB.Password=yourpassword
+```
+
+### Docker
+
+`latest` : Latest tag of the BRS with H2 database  
+`mariadb` : Latest tag of the BRS with MariaDB database  
+`2.2.6-h2`, `2.2-h2`, `2-h2` : Version 2.2.6 of the BRS with H2 database  
+`2.2.6-mariadb`, `2.2-mariadb`, `2-mariadb` : Version 2.2.6 of the BRS with MariaDB database  
+
+
+**Note (H2 only):**  
+H2 dump username and password has been changed through updates. The current dump has the user 'sa' and password 'sa' which is used in the BRS 2.2.1 image. If you get username errors, please mount your custom config for your H2 file.
+
+Old username and passwords:
+
+- both empty  
+  or
+- burst - burst
+
+---
+##### MariaDB
+
+```
+version: '3'
+
+services:
+  burstcoin:
+    image: pocconsortium/burstcoin:2-mariadb
+    restart: always
+    depends_on:
+     - mariadb
+    ports:
+     - 8123:8123
+     - 8125:8125
+  mariadb:
+    image: mariadb:10
+    environment:
+     - MYSQL_ROOT_PASSWORD=burst
+     - MYSQL_DATABASE=burst
+    command: mysqld --character_set_server=utf8mb4
+    volumes:
+     - ./burst_db:/var/lib/mysql
+```
+
+---
+##### H2
+
+```
+docker run -p 8123:8123 -p 8125:8125 -v "$(pwd)"/burst_db:/db -d pocconsortium/burstcoin:2-h2
+```
+
+
+## Upgrading
+
+Ensure the PoC-Consortium github is in your list of remotes: 
+```
+git remote -v
+```
+
+If it's not, add it: 
+```
+git remote add pocc https://github.com/PoC-Consortium/burstcoin.git
+```
+
+Replacing `X.X.X` with the latest tag, run these commands:
+
+```
+git fetch --all --tags --prune
+git checkout tags/X.X.X -b X.X.X 
+./burst.sh compile
+./burst.sh
 ```
 
 ## Striking Features

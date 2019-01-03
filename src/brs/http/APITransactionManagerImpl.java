@@ -23,6 +23,7 @@ import static brs.http.common.Parameters.SECRET_PHRASE_PARAMETER;
 import static brs.http.common.ResultFields.BROADCASTED_RESPONSE;
 import static brs.http.common.ResultFields.ERROR_RESPONSE;
 import static brs.http.common.ResultFields.FULL_HASH_RESPONSE;
+import static brs.http.common.ResultFields.NUMBER_PEERS_SENT_TO_RESPONSE;
 import static brs.http.common.ResultFields.SIGNATURE_HASH_RESPONSE;
 import static brs.http.common.ResultFields.TRANSACTION_BYTES_RESPONSE;
 import static brs.http.common.ResultFields.TRANSACTION_JSON_RESPONSE;
@@ -38,7 +39,6 @@ import brs.Attachment;
 import brs.Blockchain;
 import brs.Burst;
 import brs.BurstException;
-import brs.Constants;
 import brs.Transaction;
 import brs.Transaction.Builder;
 import brs.TransactionProcessor;
@@ -80,12 +80,13 @@ public class APITransactionManagerImpl implements APITransactionManager {
     String referencedTransactionId = Convert.emptyToNull(req.getParameter(REFERENCED_TRANSACTION_PARAMETER));
     String secretPhrase = Convert.emptyToNull(req.getParameter(SECRET_PHRASE_PARAMETER));
     String publicKeyValue = Convert.emptyToNull(req.getParameter(PUBLIC_KEY_PARAMETER));
+    String recipientPublicKeyValue = Convert.emptyToNull(req.getParameter(RECIPIENT_PUBLIC_KEY_PARAMETER));
     boolean broadcast = !Parameters.isFalse(req.getParameter(BROADCAST_PARAMETER));
 
     EncryptedMessage encryptedMessage = null;
 
     if (attachment.getTransactionType().hasRecipient()) {
-      EncryptedData encryptedData = parameterService.getEncryptedMessage(req, accountService.getAccount(recipientId));
+      EncryptedData encryptedData = parameterService.getEncryptedMessage(req, accountService.getAccount(recipientId), Convert.parseHexString(recipientPublicKeyValue));
       if (encryptedData != null) {
         encryptedMessage = new EncryptedMessage(encryptedData, !Parameters.isFalse(req.getParameter(MESSAGE_TO_ENCRYPT_IS_TEXT_PARAMETER)), blockchainHeight);
       }
@@ -186,7 +187,7 @@ public class APITransactionManagerImpl implements APITransactionManager {
         response.put(TRANSACTION_BYTES_RESPONSE, Convert.toHexString(transaction.getBytes()));
         response.put(SIGNATURE_HASH_RESPONSE, Convert.toHexString(Crypto.sha256().digest(transaction.getSignature())));
         if (broadcast) {
-          transactionProcessor.broadcast(transaction);
+          response.put(NUMBER_PEERS_SENT_TO_RESPONSE, transactionProcessor.broadcast(transaction));
           response.put(BROADCASTED_RESPONSE, true);
         } else {
           response.put(BROADCASTED_RESPONSE, false);

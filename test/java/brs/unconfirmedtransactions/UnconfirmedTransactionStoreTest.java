@@ -2,6 +2,7 @@ package brs.unconfirmedtransactions;
 
 import static brs.Attachment.ORDINARY_PAYMENT;
 import static brs.Constants.FEE_QUANT;
+import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -28,10 +29,12 @@ import brs.db.VersionedBatchEntityTable;
 import brs.db.store.AccountStore;
 import brs.fluxcapacitor.FeatureToggle;
 import brs.fluxcapacitor.FluxCapacitor;
+import brs.peer.Peer;
 import brs.props.PropertyService;
 import brs.props.Props;
 import brs.services.TimeService;
 import brs.services.impl.TimeServiceImpl;
+import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -99,47 +102,54 @@ public class UnconfirmedTransactionStoreTest {
       Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, i, FEE_QUANT * 100, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
           .id(i).senderId(123L).build();
       transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-      t.put(transaction);
+      t.put(transaction, null);
     }
 
-    assertEquals(100, t.getAll(Integer.MAX_VALUE).getTransactions().size());
+    assertEquals(100, t.getAll().size());
     assertNotNull(t.get(1L));
   }
 
-  @DisplayName("When retrieving transactions, we can specify a max amount to retrieve every time")
+
+  @DisplayName("When a transaction got added by a peer, he won't get it reflected at him when getting unconfirmed transactions")
   @Test
-  public void transactionsCanBeRetrievedWithAMaxAmount() throws ValidationException {
+  public void transactionsGivenByPeerWontGetReturnedToPeer() throws ValidationException {
+    Peer mockPeer = mock(Peer.class);
+    Peer otherMockPeer = mock(Peer.class);
+
     when(mockBlockChain.getHeight()).thenReturn(20);
 
     for (int i = 1; i <= 100; i++) {
       Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, i, FEE_QUANT * 100, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
           .id(i).senderId(123L).build();
       transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-      t.put(transaction);
+      t.put(transaction, mockPeer);
     }
 
-    assertEquals(20, t.getAll(20).getTransactions().size());
-    assertNotNull(t.get(1L));
+    assertEquals(0, t.getAllFor(mockPeer).size());
+    assertEquals(100, t.getAllFor(otherMockPeer).size());
   }
 
-  @DisplayName("When retrieving transactions, we can use the returned timestamp to get following ranges")
+  @DisplayName("When a transactions got handed by a peer and we mark his fingerprints, he won't get it back a second time")
   @Test
-  public void transactionsCanBeRetrievedInFollowingRangesWithReturnedTimestamp() throws ValidationException {
+  public void transactionsMarkedWithPeerFingerPrintsWontGetReturnedToPeer() throws ValidationException {
+    Peer mockPeer = mock(Peer.class);
+
     when(mockBlockChain.getHeight()).thenReturn(20);
 
-    for (int i = 1; i <= 30; i++) {
+    for (int i = 1; i <= 100; i++) {
       Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, i, FEE_QUANT * 100, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
           .id(i).senderId(123L).build();
       transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-      t.put(transaction);
+      t.put(transaction, null);
     }
 
-    final TimedUnconfirmedTransactionOverview rangeOne = t.getAll(20);
-    final TimedUnconfirmedTransactionOverview rangeTwo = t.getAllSince(rangeOne.getTimestamp(), 20);
+    List<Transaction> mockPeerObtainedTransactions = t.getAllFor(mockPeer);
+    assertEquals(100, mockPeerObtainedTransactions.size());
 
-    assertEquals(20, rangeOne.getTransactions().size());
-    assertEquals(10, rangeTwo.getTransactions().size());
+    t.markFingerPrintsOf(mockPeer, mockPeerObtainedTransactions);
+    assertEquals(0, t.getAllFor(mockPeer).size());
   }
+
 
   @DisplayName("When The amount of unconfirmed transactions exceeds max size, and adding another then the cache size stays the same")
   @Test
@@ -151,19 +161,19 @@ public class UnconfirmedTransactionStoreTest {
       Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, i, FEE_QUANT * 100, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
           .id(i).senderId(123L).build();
       transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-      t.put(transaction);
+      t.put(transaction, null);
     }
 
-    assertEquals(8192, t.getAll(Integer.MAX_VALUE).getTransactions().size());
+    assertEquals(8192, t.getAll().size());
     assertNotNull(t.get(1L));
 
     final Transaction oneTransactionTooMany =
         new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, 9999, FEE_QUANT * 100, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
             .id(8193L).senderId(123L).build();
     oneTransactionTooMany.sign(TestConstants.TEST_SECRET_PHRASE);
-    t.put(oneTransactionTooMany);
+    t.put(oneTransactionTooMany, null);
 
-    assertEquals(8192, t.getAll(Integer.MAX_VALUE).getTransactions().size());
+    assertEquals(8192, t.getAll().size());
     assertNull(t.get(1L));
   }
 
@@ -177,22 +187,22 @@ public class UnconfirmedTransactionStoreTest {
       Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, i, FEE_QUANT * 100, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
           .id(i).senderId(123L).build();
       transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-      t.put(transaction);
+      t.put(transaction, null);
     }
 
-    assertEquals(8192, t.getAll(Integer.MAX_VALUE).getTransactions().size());
-    assertEquals(8192, t.getAll(Integer.MAX_VALUE).getTransactions().stream().filter(t -> t.getFeeNQT() == FEE_QUANT * 100).count());
+    assertEquals(8192, t.getAll().size());
+    assertEquals(8192, t.getAll().stream().filter(t -> t.getFeeNQT() == FEE_QUANT * 100).count());
     assertNotNull(t.get(1L));
 
     final Transaction oneTransactionTooMany =
         new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, 9999, FEE_QUANT * 200, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
             .id(8193L).senderId(123L).build();
     oneTransactionTooMany.sign(TestConstants.TEST_SECRET_PHRASE);
-    t.put(oneTransactionTooMany);
+    t.put(oneTransactionTooMany, null);
 
-    assertEquals(8192, t.getAll(Integer.MAX_VALUE).getTransactions().size());
-    assertEquals(8192 - 1, t.getAll(Integer.MAX_VALUE).getTransactions().stream().filter(t -> t.getFeeNQT() == FEE_QUANT * 100).count());
-    assertEquals(1, t.getAll(Integer.MAX_VALUE).getTransactions().stream().filter(t -> t.getFeeNQT() == FEE_QUANT * 200).count());
+    assertEquals(8192, t.getAll().size());
+    assertEquals(8192 - 1, t.getAll().stream().filter(t -> t.getFeeNQT() == FEE_QUANT * 100).count());
+    assertEquals(1, t.getAll().stream().filter(t -> t.getFeeNQT() == FEE_QUANT * 200).count());
   }
 
   @DisplayName("The unconfirmed transaction gets denied in case the account is unknown")
@@ -203,7 +213,7 @@ public class UnconfirmedTransactionStoreTest {
     Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, 1, 735000, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
         .id(1).senderId(124L).build();
     transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-    t.put(transaction);
+    t.put(transaction, null);
   }
 
   @DisplayName("The unconfirmed transaction gets denied in case the account does not have enough unconfirmed balance")
@@ -214,7 +224,13 @@ public class UnconfirmedTransactionStoreTest {
     Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, 1, Constants.MAX_BALANCE_NQT, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
         .id(1).senderId(123L).build();
     transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-    t.put(transaction);
+
+    try {
+      t.put(transaction, null);
+    } catch (NotCurrentlyValidException ex) {
+      assertTrue(t.getAll().isEmpty());
+      throw ex;
+    }
   }
 
   @DisplayName("When adding the same unconfirmed transaction, nothing changes")
@@ -222,20 +238,24 @@ public class UnconfirmedTransactionStoreTest {
   public void addingNewUnconfirmedTransactionWithSameIDResultsInNothingChanging() throws ValidationException {
     when(mockBlockChain.getHeight()).thenReturn(20);
 
+    Peer mockPeer = mock(Peer.class);
+
+    when(mockPeer.getPeerAddress()).thenReturn("mockPeer");
+
     Builder transactionBuilder = new Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, 1, Constants.MAX_BALANCE_NQT - 100000, timeService.getEpochTime() + 50000,
         (short) 500, ORDINARY_PAYMENT)
         .id(1).senderId(123L);
 
     Transaction transaction1 = transactionBuilder.build();
     transaction1.sign(TestConstants.TEST_SECRET_PHRASE);
-    t.put(transaction1);
+    t.put(transaction1, mockPeer);
 
     Transaction transaction2 = transactionBuilder.build();
     transaction2.sign(TestConstants.TEST_SECRET_PHRASE);
 
-    t.put(transaction2);
+    t.put(transaction2, mockPeer);
 
-    assertEquals(1, t.getAll(Integer.MAX_VALUE).getTransactions().size());
+    assertEquals(1, t.getAll().size());
   }
 
   @DisplayName("When the maximum number of transactions with full hash reference is reached, following ones are ignored")
@@ -244,14 +264,14 @@ public class UnconfirmedTransactionStoreTest {
 
     when(mockBlockChain.getHeight()).thenReturn(20);
 
-    for (int i = 1; i <= 500; i++) {
+    for (int i = 1; i <= 414; i++) {
       Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, i, FEE_QUANT * 2, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
           .id(i).senderId(123L).referencedTransactionFullHash("b33f").build();
       transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-      t.put(transaction);
+      t.put(transaction, null);
     }
 
-    assertEquals(409, t.getAll(Integer.MAX_VALUE).getTransactions().size());
+    assertEquals(409, t.getAll().size());
   }
 
   @DisplayName("When the maximum number of transactions for a slot size is reached, following ones are ignored")
@@ -260,23 +280,23 @@ public class UnconfirmedTransactionStoreTest {
 
     when(mockBlockChain.getHeight()).thenReturn(20);
 
-    for (int i = 1; i <= 500; i++) {
+    for (int i = 1; i <= 365; i++) {
       Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, i, FEE_QUANT, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
           .id(i).senderId(123L).build();
       transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-      t.put(transaction);
+      t.put(transaction, null);
     }
 
-    assertEquals(360, t.getAll(Integer.MAX_VALUE).getTransactions().size());
+    assertEquals(360, t.getAll().size());
 
-    for (int i = 1; i <= 800; i++) {
+    for (int i = 1; i <= 725; i++) {
       Transaction transaction = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, i, FEE_QUANT * 2, timeService.getEpochTime() + 50000, (short) 500, ORDINARY_PAYMENT)
           .id(i).senderId(123L).build();
       transaction.sign(TestConstants.TEST_SECRET_PHRASE);
-      t.put(transaction);
+      t.put(transaction, null);
     }
 
-    assertEquals(1080, t.getAll(Integer.MAX_VALUE).getTransactions().size());
+    assertEquals(1080, t.getAll().size());
   }
 
   @Test
@@ -289,14 +309,36 @@ public class UnconfirmedTransactionStoreTest {
         new MessagingAliasSell("aliasName", 123, 5))
         .id(2).senderId(123L).build();
 
-    t.put(cheap);
+    t.put(cheap, null);
 
-    assertEquals(1, t.getAll(100).getTransactions().size());
+    assertEquals(1, t.getAll().size());
     assertNotNull(t.get(cheap.getId()));
 
-    t.put(expensive);
+    t.put(expensive, null);
 
-    assertEquals(1, t.getAll(100).getTransactions().size());
+    assertEquals(1, t.getAll().size());
+    assertNull(t.get(cheap.getId()));
+    assertNotNull(t.get(expensive.getId()));
+  }
+
+  @Test
+  public void cheaperDuplicateTransactionNeverGetsAdded() throws ValidationException {
+    Transaction cheap = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, 1, FEE_QUANT, timeService.getEpochTime() + 50000, (short) 500,
+        new MessagingAliasSell("aliasName", 123, 5))
+        .id(1).senderId(123L).build();
+
+    Transaction expensive = new Transaction.Builder((byte) 1, TestConstants.TEST_PUBLIC_KEY_BYTES, 1, FEE_QUANT * 2, timeService.getEpochTime() + 50000, (short) 500,
+        new MessagingAliasSell("aliasName", 123, 5))
+        .id(2).senderId(123L).build();
+
+    t.put(expensive, null);
+
+    assertEquals(1, t.getAll().size());
+    assertNotNull(t.get(expensive.getId()));
+
+    t.put(cheap, null);
+
+    assertEquals(1, t.getAll().size());
     assertNull(t.get(cheap.getId()));
     assertNotNull(t.get(expensive.getId()));
   }
